@@ -12,6 +12,9 @@ $ubuntudatastore = 'rack-physical-ssd0'
 
 $credential = Import-Clixml -Path C:\Credential\a-wiselan.cred
 $linux_creds = Import-Clixml -Path C:\Credential\linux.cred
+$install_script_url = Get-Content -Path C:\Credential\gist-url.txt
+$windows_creds = Import-Clixml -Path C:\Credential\windows.cred
+
 #Set-PowerCLIConfiguration -InvalidCertificateAction ignore
 Connect-VIServer -Server 192.168.20.2 -Credential $credential
 
@@ -36,6 +39,15 @@ function Remove-DeveloperVMs {
     # Try to gracefully stop the vms
     foreach ($VM in $DeveloperVMs){
         Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
+    }
+}
+
+function Clear-PuppetCerts {
+    param($DeveloperVMs)
+    $sudo_password = $linux_creds.GetNetworkCredential().password
+    foreach ($vm in $DeveloperVMs) {
+        $puppet_cert_clean = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.thewisemans.io'
+        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
     }
 }
 
@@ -85,30 +97,32 @@ function Initialize-DeveloperVMs {
 
 function Initialize-DeveloperVMsWindows {
     param($VM) 
-
+    $windows_creds = Import-Clixml -Path C:\Credential\windows.cred
     # update GPOs
-    Invoke-Command -ComputerName $VM -ScriptBlock {gpupdate /force /boot}
+    $update_gpos = "gpupdate /force /boot"
+    $choco_install = "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
 
-    # install choco
-    Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-    choco feature enable -n allowGlobalConfirmation
+    $choco_puppet = "choco install puppet-agent --force"
 
-    # install vmware tools
-    choco install vmware-tools
+    Invoke-VMScript -VM $VM -ScriptText $update_gpos -GuestCredential $windows_creds
+    Invoke-VMScript -VM $VM -ScriptText $choco_install -GuestCredential $windows_creds
+    Invoke-VMScript -VM $VM -ScriptText $choco_puppet -GuestCredential $windows_creds
 
-    # install Puppet
-    choco install puppet-agent --force
-
+   
     Restart-VM -VM $VM -Confirm:$False
 
 }
 
-function Intialize-DeveloperVMsLinux {
+function Initialize-DeveloperVMsLinux {
   param($VM)
-
-  $s = New-PSSession -HostName $VM -Credential $linux_creds
-
-  Invoke-SudoCommand -Session $s -Command "wget https://apt.puppet.com/puppet7-release-focal.deb -P /tmp"
+  # TODO: make this more than just DEBIAN
+  $sudo_password = $linux_creds.GetNetworkCredential().password
+  $set_host_name = 'sudo -S <<< "' + $sudo_password + '" sudo hostnamectl set-hostname $VM'
+  $puppet_script_dl = "wget " + $install_script_url + " -P /tmp"
+  $puppet_bash = 'sudo -S <<< "' + $sudo_password + '" sudo chmod +x /tmp/install-puppet.sh; sudo bash /tmp/install-puppet.sh'
+  Invoke-VMScript -VM $VM -ScriptText $set_host_name -GuestCredential $linux_creds
+  Invoke-VMScript -VM $VM -ScriptText $puppet_script_dl -GuestCredential $linux_creds
+  Invoke-VMScript -VM $VM -ScriptText $puppet_bash -GuestCredential $linux_creds
 }
 
 function Invoke-WakeOnLan
@@ -179,39 +193,15 @@ function Invoke-WakeOnLan
   }
 }
 
-function Invoke-SudoCommand {
-<#
-.SYNOPSIS
-Invokes sudo command in a remote session to Linux
-#>
-    param (
-        [Parameter(Mandatory=$true)]
-        [PSSession]
-        $Session,
-
-        [Parameter(Mandatory=$true)]
-        [String]
-        $Command
-    )
-    Invoke-Command -Session $Session {
-        $errFile = "/tmp/$($(New-Guid).Guid).err"
-        Invoke-Expression "sudo ${using:Command} 2>${errFile}" -ErrorAction Stop
-        $err = Get-Content $errFile -ErrorAction SilentlyContinue
-        Remove-Item $errFile -ErrorAction SilentlyContinue
-        If (-Not $null -eq $err)
-        {
-            throw $err
-        }
-    }
-}
-
 $DeveloperVMs = 'devwindows10', 'devwindows11', 'devubuntu'
 
 Stop-DeveloperVMs -DeveloperVMs $DeveloperVMs
 Remove-DeveloperVMs -DeveloperVMs $DeveloperVMs
-# TODO: Add Cert Clean from Puppet
+Clear-PuppetCerts -DeveloperVMs $DeveloperVMs
+
 foreach ($vm in $DeveloperVMs) {
     New-DeveloperVM -Hostname $vm -DataStore $windowsdatastore -Template "template-${vm}" -Cluster $cluster -Folder $folder -AddNetwork true
 }
+
 Start-DeveloperVMs -DeveloperVMs $DeveloperVMs
 Initialize-DeveloperVMs -DeveloperVMs $DeveloperVMs
