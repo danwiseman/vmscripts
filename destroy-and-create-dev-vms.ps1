@@ -75,6 +75,9 @@ function Initialize-DeveloperVMs {
             ".*Windows.*" {
                 Initialize-DeveloperVMsWindows -VM $vm
              }
+            ".*Linux.* "{
+              Initialize-DeveloperVMsLinux -VM $vm
+            }
         } 
   }  
     
@@ -101,7 +104,11 @@ function Initialize-DeveloperVMsWindows {
 }
 
 function Intialize-DeveloperVMsLinux {
+  param($VM)
 
+  $s = New-PSSession -HostName $VM -Credential $linux_creds
+
+  Invoke-SudoCommand -Session $s -Command "wget https://apt.puppet.com/puppet7-release-focal.deb -P /tmp"
 }
 
 function Invoke-WakeOnLan
@@ -172,8 +179,33 @@ function Invoke-WakeOnLan
   }
 }
 
+function Invoke-SudoCommand {
+<#
+.SYNOPSIS
+Invokes sudo command in a remote session to Linux
+#>
+    param (
+        [Parameter(Mandatory=$true)]
+        [PSSession]
+        $Session,
 
-$DeveloperVMs = 'devwindows10', 'devwindows11'
+        [Parameter(Mandatory=$true)]
+        [String]
+        $Command
+    )
+    Invoke-Command -Session $Session {
+        $errFile = "/tmp/$($(New-Guid).Guid).err"
+        Invoke-Expression "sudo ${using:Command} 2>${errFile}" -ErrorAction Stop
+        $err = Get-Content $errFile -ErrorAction SilentlyContinue
+        Remove-Item $errFile -ErrorAction SilentlyContinue
+        If (-Not $null -eq $err)
+        {
+            throw $err
+        }
+    }
+}
+
+$DeveloperVMs = 'devwindows10', 'devwindows11', 'devubuntu'
 
 Stop-DeveloperVMs -DeveloperVMs $DeveloperVMs
 Remove-DeveloperVMs -DeveloperVMs $DeveloperVMs
