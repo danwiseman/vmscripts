@@ -15,101 +15,171 @@ $linux_creds = Import-Clixml -Path C:\Credential\linux.cred
 #Set-PowerCLIConfiguration -InvalidCertificateAction ignore
 Connect-VIServer -Server 192.168.20.2 -Credential $credential
 
-# shutdown linux
-foreach ($vm in $ubuntu_dev_desktops){
-    Shutdown-VMGuest -VM $vm -Confirm:$False 
+function Stop-DeveloperVMs {
+    param(
+        $DeveloperVMs
+    )
+    # Try to gracefully stop the vms
+    foreach ($vm in $DeveloperVMs){
+        Shutdown-VMGuest -VM $vm -Confirm:$False 
+    }
+    # force them to turn off
+    foreach ($vm in $DeveloperVMs){
+        Stop-VM -VM $vm -Confirm:$False 
+    }
 }
 
-#shutdown windows
-foreach ($vm in $windows_dev_desktops){
-    Shutdown-VMGuest -VM $vm -Confirm:$False 
+function Remove-DeveloperVMs {
+    param(
+        $DeveloperVMs
+    )
+    # Try to gracefully stop the vms
+    foreach ($VM in $DeveloperVMs){
+        Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
+    }
 }
 
-Start-Sleep -Seconds 60
+function New-DeveloperVM {
+    param($Hostname, $DataStore, $Template, $Cluster, $Folder, $AddNetwork)
 
-# shutdown linux
-foreach ($vm in $ubuntu_dev_desktops){
-    Stop-VM -VM $vm -Confirm:$False 
-}
-
-#shutdown windows
-foreach ($vm in $windows_dev_desktops){
-    Stop-VM -VM $vm -Confirm:$False 
-}
-
-Start-Sleep -Seconds 60
-
-# delete
-# shutdown linux
-foreach ($vm in $ubuntu_dev_desktops){
-    Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
-}
-
-#shutdown windows
-foreach ($vm in $windows_dev_desktops){
-    Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
-}
-
-# create vms
-# shutdown linux
-foreach ($vm in $ubuntu_dev_desktops){
-    Write-Warning "Creating $($vm) in $($cluster)"
-    New-VM -Name $vm -Datastore $ubuntudatastore -Template $ubuntutemplate  -ResourcePool $cluster -Location $folder -OSCustomizationSpec 'ubuntu'
-}
-
-New-VM -Name 'devwindows10' -Datastore $windowsdatastore -Template $windows10template  -ResourcePool $cluster -Location $folder 
-New-VM -Name 'devwindows11' -Datastore $windowsdatastore -Template $windows11template  -ResourcePool $cluster -Location $folder
-foreach ($vm in $windows_dev_desktops){
-    Get-VM $vm | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3 
-}
-
-foreach ($vm in $ubuntu_dev_desktops){
-    Get-VM $vm | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3 
-}
-
-# turn on linux
-foreach ($vm in $ubuntu_dev_desktops){
-    Start-VM -VM $vm -Confirm:$False 
-}
-
-#turn on windows
-foreach ($vm in $windows_dev_desktops){
-    Start-VM -VM $vm -Confirm:$False 
-}
-
-Start-Sleep -Seconds 300
-
-## Install everything on windows ##
-foreach ($vm in $windows_dev_desktops){
-    Invoke-Command -ComputerName $vm -ScriptBlock {gpupdate /force /boot} 
-}
-
-foreach ($vm in $windows_dev_desktops){
-    Restart-VM -VM $vm -Confirm:$False
+    New-VM -Name $Hostname -Datastore $DataStore -Template $Template  -ResourcePool $Cluster -Location $Folder 
+    if($AddNetwork) {
+        Get-VM $Hostname | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3
     }
 
-Start-Sleep -Seconds 30
+}
 
-Invoke-Command -ComputerName $windows_dev_desktops -ScriptBlock {
+function Start-DeveloperVMs {
+    param(
+        $DeveloperVMs
+    )
+   
+    foreach ($VM in $DeveloperVMs){
+        Start-VM -VM $vm -Confirm:$False 
+    }
+}
+
+function Initialize-DeveloperVMs {
+    param(
+        $DeveloperVMs
+    )
+    
+    foreach ($vm in $DeveloperVMs){
+        $mac_address = Get-VM $vm | Get-NetworkAdapter | select -ExpandProperty MacAddress 
+        Invoke-WakeOnLan -MacAddress $mac_address
+        
+        $GuestType = (Get-VM $vm).ExtensionData.Config.GuestFullName
+        Write-Host $GuestType
+
+        switch -regex ($GuestType) {
+            ".*Windows.*" {
+                Initialize-DeveloperVMsWindows -VM $vm
+             }
+        } 
+  }  
+    
+}
+
+function Initialize-DeveloperVMsWindows {
+    param($VM) 
+
+    # update GPOs
+    Invoke-Command -ComputerName $VM -ScriptBlock {gpupdate /force /boot}
+
+    # install choco
     Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
     choco feature enable -n allowGlobalConfirmation
-    }
 
-    
-
-Invoke-Command -ComputerName $windows_dev_desktops -ScriptBlock {
+    # install vmware tools
     choco install vmware-tools
-    
-    }
-foreach ($vm in $windows_dev_desktops){
-    Restart-VM -VM $vm -Confirm:$False
-    }
 
-    Start-Sleep -Seconds 130
+    # install Puppet
+    choco install puppet-agent --force
 
-    Invoke-Command -ComputerName $windows_dev_desktops -ScriptBlock {
-        choco install puppet-agent --force
-        set PATH=%PATH%;"C:\Program Files\Puppet Labs\Puppet\bin"
-        puppet agent -t
-    
+    Restart-VM -VM $VM -Confirm:$False
+
+}
+
+function Intialize-DeveloperVMsLinux {
+
+}
+
+function Invoke-WakeOnLan
+{
+  param
+  (
+    # one or more MACAddresses
+    [Parameter(Mandatory,ValueFromPipeline,ValueFromPipelineByPropertyName)]
+    # mac address must be a following this regex pattern:
+    [ValidatePattern('^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$')]
+    [string[]]
+    $MacAddress 
+  )
+ 
+  begin
+  {
+    # instantiate a UDP client:
+    $UDPclient = [System.Net.Sockets.UdpClient]::new()
+  }
+  process
+  {
+    foreach($_ in $MacAddress)
+    {
+      try {
+        $currentMacAddress = $_
+        
+        # get byte array from mac address:
+        $mac = $currentMacAddress -split '[:-]' |
+          # convert the hex number into byte:
+          ForEach-Object {
+            [System.Convert]::ToByte($_, 16)
+          }
+ 
+        #region compose the "magic packet"
+        
+        # create a byte array with 102 bytes initialized to 255 each:
+        $packet = [byte[]](,0xFF * 102)
+        
+        # leave the first 6 bytes untouched, and
+        # repeat the target mac address bytes in bytes 7 through 102:
+        6..101 | Foreach-Object { 
+          # $_ is indexing in the byte array,
+          # $_ % 6 produces repeating indices between 0 and 5
+          # (modulo operator)
+          $packet[$_] = $mac[($_ % 6)]
+        }
+        
+        #endregion
+        
+        # connect to port 400 on broadcast address:
+        $UDPclient.Connect(([System.Net.IPAddress]::Broadcast),4000)
+        
+        # send the magic packet to the broadcast address:
+        $null = $UDPclient.Send($packet, $packet.Length)
+        Write-Verbose "sent magic packet to $currentMacAddress..."
+      }
+      catch 
+      {
+        Write-Warning "Unable to send ${mac}: $_"
+      }
     }
+  }
+  end
+  {
+    # release the UDF client and free its memory:
+    $UDPclient.Close()
+    $UDPclient.Dispose()
+  }
+}
+
+
+$DeveloperVMs = 'devwindows10', 'devwindows11'
+
+Stop-DeveloperVMs -DeveloperVMs $DeveloperVMs
+Remove-DeveloperVMs -DeveloperVMs $DeveloperVMs
+# TODO: Add Cert Clean from Puppet
+foreach ($vm in $DeveloperVMs) {
+    New-DeveloperVM -Hostname $vm -DataStore $windowsdatastore -Template "template-${vm}" -Cluster $cluster -Folder $folder -AddNetwork true
+}
+Start-DeveloperVMs -DeveloperVMs $DeveloperVMs
+Initialize-DeveloperVMs -DeveloperVMs $DeveloperVMs
