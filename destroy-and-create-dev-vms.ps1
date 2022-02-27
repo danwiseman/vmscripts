@@ -63,7 +63,9 @@ foreach ($vm in $windows_dev_desktops){
     Get-VM $vm | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3 
 }
 
-
+foreach ($vm in $ubuntu_dev_desktops){
+    Get-VM $vm | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3 
+}
 
 # turn on linux
 foreach ($vm in $ubuntu_dev_desktops){
@@ -82,14 +84,18 @@ foreach ($vm in $windows_dev_desktops){
     Invoke-Command -ComputerName $vm -ScriptBlock {gpupdate /force /boot} 
 }
 
-$linux_creds = Import-Clixml -Path C:\Credential\linux.cred
+foreach ($vm in $windows_dev_desktops){
+    Restart-VM -VM $vm -Confirm:$False
+    }
 
-
+Start-Sleep -Seconds 30
 
 Invoke-Command -ComputerName $windows_dev_desktops -ScriptBlock {
     Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
     choco feature enable -n allowGlobalConfirmation
     }
+
+    
 
 Invoke-Command -ComputerName $windows_dev_desktops -ScriptBlock {
     choco install vmware-tools
@@ -102,7 +108,7 @@ foreach ($vm in $windows_dev_desktops){
     Start-Sleep -Seconds 130
 
     Invoke-Command -ComputerName $windows_dev_desktops -ScriptBlock {
-        choco install puppet-agent
+        choco install puppet-agent --force
         set PATH=%PATH%;"C:\Program Files\Puppet Labs\Puppet\bin"
         puppet agent -t
     
