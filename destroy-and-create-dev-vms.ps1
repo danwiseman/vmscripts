@@ -49,11 +49,17 @@ function Clear-PuppetCerts {
         $puppet_cert_clean = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.thewisemans.io'
         $puppet_cert_clean_no_domain = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm
         $puppet_cert_clean_no_domain_with_dot = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.'
+        
+        $puppet_db_remove = 'sudo -S <<< "' + $sudo_password + '" sudo puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
+        
         Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
         Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain -GuestCredential $linux_creds
         Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain_with_dot -GuestCredential $linux_creds
+        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_db_remove -GuestCredential $linux_creds
     }
 }
+
+
 
 function New-DeveloperVM {
     param($Hostname, $DataStore, $Template, $Cluster, $Folder, $AddNetwork)
@@ -107,7 +113,7 @@ function Initialize-DeveloperVMsWindows {
     $update_gpos = "gpupdate /force /boot"
     $choco_install = "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
     $choco_puppet = "choco install puppet-agent --force"
-    $run_puppet = "puppet agent -t"
+    $run_puppet = "puppet agent"
     Invoke-VMScript -VM $VM -ScriptText $update_gpos -GuestCredential $windows_creds
     Invoke-VMScript -VM $VM -ScriptText $choco_install -GuestCredential $windows_creds
     Invoke-VMScript -VM $VM -ScriptText $choco_puppet -GuestCredential $windows_creds
