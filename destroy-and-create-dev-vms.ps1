@@ -104,10 +104,10 @@ function Initialize-DeveloperVMsWindows {
       $PuppetScriptFile
       ) 
     $windows_creds  = Import-Clixml -Path C:\Credential\windows.cred
-    Copy-VMGuestFile -Source $PuppetScriptFile -Destination C:\temp\ `
-            -VM $VM -LocalToGuest -HostCredential $windows_creds `
+    Get-Item './' + $PuppetScriptFile | Copy-VMGuestFile `
+            -Destination 'C:\temp\' -VM $VM -LocalToGuest `
             -GuestCredential $windows_creds
-    $run_script = 'C:\temp\' + $PuppetScriptFile
+    $run_script = 'C:\temp' + $PuppetScriptFile
     Invoke-VMScript -VM $VM -ScriptText $run_script -GuestCredential $windows_creds
 }
 
@@ -119,8 +119,8 @@ function Initialize-DeveloperVMsLinux {
   
   $linux_creds = Import-Clixml -Path C:\Credential\linux.cred
   $windows_creds  = Import-Clixml -Path C:\Credential\windows.cred
-  Copy-VMGuestFile -Source $PuppetScriptFile -Destination /tmp/ `
-            -VM $VM -LocalToGuest -HostCredential $windows_creds `
+  Get-Item './' + $PuppetScriptFile | Copy-VMGuestFile `
+            -Destination '/tmp' -VM $VM -LocalToGuest `
             -GuestCredential $linux_creds
   $chmod_script = 'chmod +x /tmp/' + $PuppetScriptFile
   $run_script   = '/tmp/' + $PuppetScriptFile
