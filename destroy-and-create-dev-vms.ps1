@@ -45,7 +45,7 @@ function Clear-PuppetCerts {
     param($DeveloperVMs)
     $sudo_password = $linux_creds.GetNetworkCredential().password
     foreach ($vm in $DeveloperVMs) {
-        $puppet_cert_clean = 'puppetserver ca clean --certname ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
+        $puppet_cert_clean = 'puppetserver ca clean --certname ' + $vm + ', ' + $vm + '.thewisemans.io, ' + $vm +'.'
         $puppet_db_remove  = 'puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
         
         Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
