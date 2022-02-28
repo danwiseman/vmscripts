@@ -1,22 +1,5 @@
 # Shutdown VMs, then create new ones
 
-$windows_dev_desktops = 'devwindows10', 'devwindows11'
-$ubuntu_dev_desktops = 'devubuntu1', 'devubuntu2'
-$cluster = 'homecluster'
-$folder = 'Desktops'
-$windows10template = 'template-devwindows10'
-$windows11template = 'template-devwindows11'
-$ubuntutemplate = 'template-ubuntudesktop'
-$windowsdatastore = 'rack-physical-nvme'
-$ubuntudatastore = 'rack-physical-ssd0'
-
-$credential = Import-Clixml -Path C:\Credential\a-wiselan.cred
-$linux_creds = Import-Clixml -Path C:\Credential\linux.cred
-$install_script_url = Get-Content -Path C:\Credential\gist-url.txt
-$windows_creds = Import-Clixml -Path C:\Credential\windows.cred
-
-#Set-PowerCLIConfiguration -InvalidCertificateAction ignore
-Connect-VIServer -Server 192.168.20.2 -Credential $credential
 
 function Stop-DeveloperVMs {
     param(
@@ -62,14 +45,10 @@ function Clear-PuppetCerts {
     param($DeveloperVMs)
     $sudo_password = $linux_creds.GetNetworkCredential().password
     foreach ($vm in $DeveloperVMs) {
-        $puppet_cert_clean = 'puppetserver ca clean --certname ' + $vm + '.thewisemans.io'
-        $puppet_cert_clean_no_domain = 'puppetserver ca clean --certname ' + $vm
-        $puppet_cert_clean_no_domain_with_dot = 'puppetserver ca clean --certname ' + $vm + '.'
-        $puppet_db_remove = 'puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
+        $puppet_cert_clean = 'puppetserver ca clean --certname ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
+        $puppet_db_remove  = 'puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
         
         Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
-        Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain -GuestCredential $linux_creds
-        Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain_with_dot -GuestCredential $linux_creds
         Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_db_remove -GuestCredential $linux_creds
     }
 }
@@ -139,6 +118,7 @@ function Initialize-DeveloperVMsWindows {
 function Initialize-DeveloperVMsLinux {
   param($VM)
   # TODO: make this more than just DEBIAN
+  # TODO: change this from a wget to just a VM upload
   $linux_creds = Import-Clixml -Path C:\Credential\linux.cred
   $sudo_password = $linux_creds.GetNetworkCredential().password
   $delete_script = 'rm -rf /tmp/install-puppet.sh'
@@ -223,20 +203,26 @@ function Invoke-WakeOnLan
   }
 }
 
-$DeveloperVMs = 'devwindows10', 'devwindows11', 'devubuntu', 'devpopos'
 
-Stop-DeveloperVMs -DeveloperVMs $DeveloperVMs
-Start-Sleep -Seconds 45
-Remove-DeveloperVMs -DeveloperVMs $DeveloperVMs
-Clear-PuppetCerts -DeveloperVMs $DeveloperVMs
+$credential = Import-Clixml -Path C:\Credential\a-wiselan.cred
+$linux_creds = Import-Clixml -Path C:\Credential\linux.cred
+$install_script_url = Get-Content -Path C:\Credential\gist-url.txt
+$windows_creds = Import-Clixml -Path C:\Credential\windows.cred
 
-foreach ($vm in $DeveloperVMs) {
-    New-DeveloperVM -Hostname $vm -DataStore $windowsdatastore -Template "template-${vm}" -Cluster $cluster -Folder $folder -AddNetwork true
+#Set-PowerCLIConfiguration -InvalidCertificateAction ignore
+Connect-VIServer -Server 192.168.20.2 -Credential $credential
+
+$devVMsJson = Get-Content .\developer-vms.json -Raw | ConvertFrom-Json 
+
+foreach ($devVM in $devVMsJson) {
+  Stop-DeveloperVMs -DeveloperVMs $devVM.vmname
+  Remove-DeveloperVMs -DeveloperVMs $devVM.vmname
+  Clear-PuppetCerts -DeveloperVMs $devVM.vmname
+  New-DeveloperVM -Hostname $devVM.vmname -DataStore $devVM.datastore 
+                  -Template $devVM.template -Cluster $devVM.cluster 
+                  -Folder $devVM.folder -AddNetwork true
+  Start-Sleep -Seconds 20
+  Start-DeveloperVMs -DeveloperVMs $devVM.vmname
+  Initialize-DeveloperVMs -DeveloperVMs $devVM.vmname
 }
 
-Start-Sleep -Seconds 20
-
-Start-DeveloperVMs -DeveloperVMs $DeveloperVMs
-Start-Sleep -Seconds 55
-
-Initialize-DeveloperVMs -DeveloperVMs $DeveloperVMs

@@ -1,0 +1,32 @@
+[{
+    "vmname": "devwindows10",
+    "datastore": "rack-physical-nvme",
+    "network": "VM Network",
+    "template": "template-devwindows10",
+    "folder": "Desktops",
+    "cluster": "homecluster"
+},
+{
+    "vmname": "devwindows11",
+    "datastore": "rack-physical-nvme",
+    "network": "VM Network",
+    "template": "template-devwindows11",
+    "folder": "Desktops",
+    "cluster": "homecluster"
+},
+{
+    "vmname": "devubuntu",
+    "datastore": "rack-physical-ssd0",
+    "network": "VM Network",
+    "template": "template-devubuntu",
+    "folder": "Desktops",
+    "cluster":"homecluster"
+},
+{
+    "vmname": "devpopos",
+    "datastore": "rack-physical-ssd0",
+    "network": "VM Network",
+    "template": "template-devpopos",
+    "folder": "Desktops",
+    "cluster":"homecluster"
+}]
