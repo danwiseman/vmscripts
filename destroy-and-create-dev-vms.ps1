@@ -47,7 +47,11 @@ function Clear-PuppetCerts {
     $sudo_password = $linux_creds.GetNetworkCredential().password
     foreach ($vm in $DeveloperVMs) {
         $puppet_cert_clean = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.thewisemans.io'
+        $puppet_cert_clean_no_domain = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm
+        $puppet_cert_clean_no_domain_with_dot = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.'
         Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
+        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain -GuestCredential $linux_creds
+        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain_with_dot -GuestCredential $linux_creds
     }
 }
 
@@ -56,6 +60,7 @@ function New-DeveloperVM {
 
     New-VM -Name $Hostname -Datastore $DataStore -Template $Template  -ResourcePool $Cluster -Location $Folder 
     if($AddNetwork) {
+        Start-Sleep -Seconds 125
         Get-VM $Hostname | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3
     }
 
@@ -101,29 +106,33 @@ function Initialize-DeveloperVMsWindows {
     # update GPOs
     $update_gpos = "gpupdate /force /boot"
     $choco_install = "Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
-
     $choco_puppet = "choco install puppet-agent --force"
-
+    $run_puppet = "puppet agent -t"
     Invoke-VMScript -VM $VM -ScriptText $update_gpos -GuestCredential $windows_creds
     Invoke-VMScript -VM $VM -ScriptText $choco_install -GuestCredential $windows_creds
     Invoke-VMScript -VM $VM -ScriptText $choco_puppet -GuestCredential $windows_creds
-
-   
-    Restart-VM -VM $VM -Confirm:$False
+    Invoke-VMScript -VM $VM -ScriptText $run_puppet -GuestCredential $windows_creds
 
 }
 
 function Initialize-DeveloperVMsLinux {
   param($VM)
   # TODO: make this more than just DEBIAN
+  $linux_creds = Import-Clixml -Path C:\Credential\linux.cred
   $sudo_password = $linux_creds.GetNetworkCredential().password
-  $set_host_name = 'sudo -S <<< "' + $sudo_password + '" sudo hostnamectl set-hostname $VM'
+  $delete_script = 'sudo -S <<< "' + $sudo_password + '" sudo rm -rf /tmp/install-puppet.sh'
+  $set_host_name = 'sudo -S <<< "' + $sudo_password + '" sudo hostnamectl set-hostname ' + $VM
   $puppet_script_dl = "wget " + $install_script_url + " -P /tmp"
-  $puppet_bash = 'sudo -S <<< "' + $sudo_password + '" sudo chmod +x /tmp/install-puppet.sh; sudo bash /tmp/install-puppet.sh'
+  $puppet_bash = 'sudo -S <<< "' + $sudo_password + '" sudo chmod +x /tmp/install-puppet.sh'
+  $puppet_script_run = 'sudo -S <<< "' + $sudo_password + '" sudo /tmp/install-puppet.sh'
+  Invoke-VMScript -VM $VM -ScriptText $delete_script -GuestCredential $linux_creds
   Invoke-VMScript -VM $VM -ScriptText $set_host_name -GuestCredential $linux_creds
   Invoke-VMScript -VM $VM -ScriptText $puppet_script_dl -GuestCredential $linux_creds
   Invoke-VMScript -VM $VM -ScriptText $puppet_bash -GuestCredential $linux_creds
+  Invoke-VMScript -VM $VM -ScriptText $puppet_script_run -GuestCredential $linux_creds
+
 }
+
 
 function Invoke-WakeOnLan
 {
@@ -193,9 +202,10 @@ function Invoke-WakeOnLan
   }
 }
 
-$DeveloperVMs = 'devwindows10', 'devwindows11', 'devubuntu'
+$DeveloperVMs = 'devwindows10', 'devwindows11', 'devubuntu', 'devpopos'
 
 Stop-DeveloperVMs -DeveloperVMs $DeveloperVMs
+Start-Sleep -Seconds 45
 Remove-DeveloperVMs -DeveloperVMs $DeveloperVMs
 Clear-PuppetCerts -DeveloperVMs $DeveloperVMs
 
@@ -203,5 +213,9 @@ foreach ($vm in $DeveloperVMs) {
     New-DeveloperVM -Hostname $vm -DataStore $windowsdatastore -Template "template-${vm}" -Cluster $cluster -Folder $folder -AddNetwork true
 }
 
+Start-Sleep -Seconds 20
+
 Start-DeveloperVMs -DeveloperVMs $DeveloperVMs
+Start-Sleep -Seconds 55
+
 Initialize-DeveloperVMs -DeveloperVMs $DeveloperVMs
