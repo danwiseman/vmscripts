@@ -61,13 +61,13 @@ function Clear-PuppetCerts {
 
 function New-DeveloperVM {
     param($Hostname, $DataStore, $Template, $Cluster, $Folder, $AddNetwork)
-    Write-Host 'Creating ' + $Hostname
+    Write-Host 'Creating ' $Hostname
     New-VM -Name $Hostname -Datastore $DataStore -Template $Template  -ResourcePool $Cluster -Location $Folder 
     if($AddNetwork) {
         Write-Host 'Removing All Networking for ' + $Hostname
         $oldnic = Get-NetworkAdapter -VM $Hostname
         Remove-NetworkAdapter -NetworkAdapter $oldnic    
-        Write-Host 'Adding Networking for ' + $Hostname
+        Write-Host 'Adding Networking for ' $Hostname
         Get-VM $Hostname | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3
     }
 
@@ -79,7 +79,7 @@ function Start-DeveloperVMs {
     )
    
     foreach ($VM in $DeveloperVMs){
-        Write-Host 'Starting ' + $VM
+        Write-Host 'Starting ' $VM
         Start-VM -VM $vm -Confirm:$False 
     }
 }
@@ -92,7 +92,7 @@ function Initialize-DeveloperVMs {
     
     foreach ($vm in $DeveloperVMs){        
         $GuestType = (Get-VM $vm).ExtensionData.Config.GuestFullName
-        Write-Host 'Initializing ' + $vm + ' as ' + $GuestType
+        Write-Host 'Initializing ' $vm ' as ' $GuestType
 
         switch -regex ($GuestType) {
             ".*Windows.*" {
@@ -158,6 +158,7 @@ foreach ($devVM in $devVMsJson) {
                   -Folder $devVM.folder -AddNetwork true
   Start-Sleep -Seconds 20
   Start-DeveloperVMs -DeveloperVMs $devVM.vmname
+  Start-Sleep -Seconds 125
   Initialize-DeveloperVMs -DeveloperVMs $devVM.vmname -PuppetScriptFile $devVM.puppet_script
 }
 
