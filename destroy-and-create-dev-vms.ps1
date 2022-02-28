@@ -42,20 +42,28 @@ function Remove-DeveloperVMs {
     }
 }
 
+function Invoke-SudoVMScript {
+  param($VM, $ScriptText, $Credential)
+  $sudo_password = $Credential.GetNetworkCredential().password
+  $st = 'sudo -S <<< "' + $sudo_password + '" sudo ' + $ScriptText
+  Invoke-VMScript -VM $VM -ScriptText $st -GuestCredential $Credential
+}
+
+# The Certs Need cleaned and the nodes removed from PuppetDB, so they can
+# be re-created
 function Clear-PuppetCerts {
     param($DeveloperVMs)
     $sudo_password = $linux_creds.GetNetworkCredential().password
     foreach ($vm in $DeveloperVMs) {
-        $puppet_cert_clean = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.thewisemans.io'
-        $puppet_cert_clean_no_domain = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm
-        $puppet_cert_clean_no_domain_with_dot = 'sudo -S <<< "' + $sudo_password + '" sudo puppetserver ca clean --certname ' + $vm + '.'
+        $puppet_cert_clean = 'puppetserver ca clean --certname ' + $vm + '.thewisemans.io'
+        $puppet_cert_clean_no_domain = 'puppetserver ca clean --certname ' + $vm
+        $puppet_cert_clean_no_domain_with_dot = 'puppetserver ca clean --certname ' + $vm + '.'
+        $puppet_db_remove = 'puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
         
-        $puppet_db_remove = 'sudo -S <<< "' + $sudo_password + '" sudo puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
-        
-        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
-        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain -GuestCredential $linux_creds
-        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain_with_dot -GuestCredential $linux_creds
-        Invoke-VMScript -VM 'puppetserver' -ScriptText $puppet_db_remove -GuestCredential $linux_creds
+        Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean -GuestCredential $linux_creds
+        Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain -GuestCredential $linux_creds
+        Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_cert_clean_no_domain_with_dot -GuestCredential $linux_creds
+        Invoke-SudoVMScript -VM 'puppetserver' -ScriptText $puppet_db_remove -GuestCredential $linux_creds
     }
 }
 
@@ -126,16 +134,16 @@ function Initialize-DeveloperVMsLinux {
   # TODO: make this more than just DEBIAN
   $linux_creds = Import-Clixml -Path C:\Credential\linux.cred
   $sudo_password = $linux_creds.GetNetworkCredential().password
-  $delete_script = 'sudo -S <<< "' + $sudo_password + '" sudo rm -rf /tmp/install-puppet.sh'
-  $set_host_name = 'sudo -S <<< "' + $sudo_password + '" sudo hostnamectl set-hostname ' + $VM
+  $delete_script = 'rm -rf /tmp/install-puppet.sh'
+  $set_host_name = 'hostnamectl set-hostname ' + $VM
   $puppet_script_dl = "wget " + $install_script_url + " -P /tmp"
-  $puppet_bash = 'sudo -S <<< "' + $sudo_password + '" sudo chmod +x /tmp/install-puppet.sh'
-  $puppet_script_run = 'sudo -S <<< "' + $sudo_password + '" sudo /tmp/install-puppet.sh'
-  Invoke-VMScript -VM $VM -ScriptText $delete_script -GuestCredential $linux_creds
-  Invoke-VMScript -VM $VM -ScriptText $set_host_name -GuestCredential $linux_creds
-  Invoke-VMScript -VM $VM -ScriptText $puppet_script_dl -GuestCredential $linux_creds
-  Invoke-VMScript -VM $VM -ScriptText $puppet_bash -GuestCredential $linux_creds
-  Invoke-VMScript -VM $VM -ScriptText $puppet_script_run -GuestCredential $linux_creds
+  $puppet_bash = 'chmod +x /tmp/install-puppet.sh'
+  $puppet_script_run = '/tmp/install-puppet.sh'
+  Invoke-SudoVMScript -VM $VM -ScriptText $delete_script -GuestCredential $linux_creds
+  Invoke-SudoVMScript -VM $VM -ScriptText $set_host_name -GuestCredential $linux_creds
+  Invoke-SudoVMScript -VM $VM -ScriptText $puppet_script_dl -GuestCredential $linux_creds
+  Invoke-SudoVMScript -VM $VM -ScriptText $puppet_bash -GuestCredential $linux_creds
+  Invoke-SudoVMScript -VM $VM -ScriptText $puppet_script_run -GuestCredential $linux_creds
 
 }
 
