@@ -22,13 +22,14 @@ function Stop-DeveloperVMs {
     param(
         $DeveloperVMs
     )
-    # Try to gracefully stop the vms
+    # Not concerned with hard shutdowns because it will get rebuilt
     foreach ($vm in $DeveloperVMs){
-        Shutdown-VMGuest -VM $vm -Confirm:$False 
-    }
-    # force them to turn off
-    foreach ($vm in $DeveloperVMs){
-        Stop-VM -VM $vm -Confirm:$False 
+      $powerstate = (Get-VM -Name $vm).ExtensionData.guest.guestState
+      if ($powerstate -like 'off') {
+        Write-Host $vm + ' is off. moving on...'
+      } else {
+        Stop-VM -VM $vm -Confirm:$False
+      }     
     }
 }
 
@@ -38,7 +39,13 @@ function Remove-DeveloperVMs {
     )
     # Delete the VMs
     foreach ($VM in $DeveloperVMs){
-        Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
+      # Extra check for powerstate
+      $powerstate = (Get-VM -Name $vm).ExtensionData.guest.guestState
+      if ($powerstate -like 'on') {
+        Stop-VM -VM $vm -Confirm:$False
+      } 
+      
+      Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
     }
 }
 
