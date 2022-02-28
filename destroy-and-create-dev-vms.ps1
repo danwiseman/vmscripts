@@ -36,17 +36,17 @@ function Remove-DeveloperVMs {
     param(
         $DeveloperVMs
     )
-    # Try to gracefully stop the vms
+    # Delete the VMs
     foreach ($VM in $DeveloperVMs){
         Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
     }
 }
 
 function Invoke-SudoVMScript {
-  param($VM, $ScriptText, $Credential)
-  $sudo_password = $Credential.GetNetworkCredential().password
+  param($VM, $ScriptText, $GuestCredential)
+  $sudo_password = $GuestCredential.GetNetworkCredential().password
   $st = 'sudo -S <<< "' + $sudo_password + '" sudo ' + $ScriptText
-  Invoke-VMScript -VM $VM -ScriptText $st -GuestCredential $Credential
+  Invoke-VMScript -VM $VM -ScriptText $st -GuestCredential $GuestCredential
 }
 
 # The Certs Need cleaned and the nodes removed from PuppetDB, so they can
