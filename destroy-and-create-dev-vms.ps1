@@ -12,6 +12,7 @@ function Stop-DeveloperVMs {
         Write-Host $vm + ' is off. moving on...'
       } else {
         Stop-VM -VM $vm -Confirm:$False
+        Write-Host $vm + ' is now off.'
       }     
     }
 }
@@ -26,9 +27,11 @@ function Remove-DeveloperVMs {
       $powerstate = (Get-VM -Name $vm).ExtensionData.guest.guestState
       if ($powerstate -like 'on') {
         Stop-VM -VM $vm -Confirm:$False
+        Write-Host $vm + ' is now off.'
       } 
-      
+      Write-Host $vm + ' is getting deleted.'
       Remove-VM -VM $vm -DeletePermanently -Confirm:$False 
+      Write-Host $vm + ' is now deleted.'
     }
 }
 
@@ -45,6 +48,7 @@ function Clear-PuppetCerts {
     param($DeveloperVMs)
     $sudo_password = $linux_creds.GetNetworkCredential().password
     foreach ($vm in $DeveloperVMs) {
+        Write-Host 'cleaning puppet certs for ' + $vm
         $puppet_cert_clean = 'puppetserver ca clean --certname ' + $vm + ',' + $vm + '.thewisemans.io,' + $vm +'.'
         $puppet_db_remove  = 'puppet node deactivate ' + $vm + ' ' + $vm + '.thewisemans.io ' + $vm +'.'
         
@@ -57,10 +61,13 @@ function Clear-PuppetCerts {
 
 function New-DeveloperVM {
     param($Hostname, $DataStore, $Template, $Cluster, $Folder, $AddNetwork)
-
+    Write-Host 'Creating ' + $Hostname
     New-VM -Name $Hostname -Datastore $DataStore -Template $Template  -ResourcePool $Cluster -Location $Folder 
     if($AddNetwork) {
-        Start-Sleep -Seconds 125
+        Write-Host 'Removing All Networking for ' + $Hostname
+        $oldnic = Get-NetworkAdapter -VM $Hostname
+        Remove-NetworkAdapter -NetworkAdapter $oldnic    
+        Write-Host 'Adding Networking for ' + $Hostname
         Get-VM $Hostname | New-NetworkAdapter -NetworkName "VM Network" -WakeOnLan -StartConnected -Type Vmxnet3
     }
 
@@ -72,6 +79,7 @@ function Start-DeveloperVMs {
     )
    
     foreach ($VM in $DeveloperVMs){
+        Write-Host 'Starting ' + $VM
         Start-VM -VM $vm -Confirm:$False 
     }
 }
@@ -84,7 +92,7 @@ function Initialize-DeveloperVMs {
     
     foreach ($vm in $DeveloperVMs){        
         $GuestType = (Get-VM $vm).ExtensionData.Config.GuestFullName
-        Write-Host $GuestType
+        Write-Host 'Initializing ' + $vm + ' as ' + $GuestType
 
         switch -regex ($GuestType) {
             ".*Windows.*" {
