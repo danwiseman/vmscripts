@@ -9,7 +9,7 @@ after creation, and run to generate the required configuration.
 
 Example JSON:
 
-```
+```json
   [{
     "vmname": "devwindows10",
     "datastore": "rack-physical-nvme",
